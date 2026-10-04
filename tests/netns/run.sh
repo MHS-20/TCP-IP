@@ -14,7 +14,7 @@ mount -t tmpfs tmpfs /tmp
 cd "$root"
 log=$(mktemp)
 pass=0; fail=0
-check() { name=$1; shift; if "$@" >>"$log" 2>&1; then echo "ok   $name"; pass=$((pass+1)); else echo "FAIL $name"; fail=$((fail+1)); fi; }
+check() { name=$1; shift; t0=$(date +%s%N); if "$@" >>"$log" 2>&1; then echo "ok   $name ($(( ($(date +%s%N) - t0) / 1000000 ))ms)"; pass=$((pass+1)); else echo "FAIL $name"; fail=$((fail+1)); fi; }
 
 ip link set lo up
 ./lvl-ip >"$log.stack" 2>&1 &
@@ -71,10 +71,50 @@ udp_echo_server 7001
 sleep 0.3
 check "udp: lvl-ip client -> kernel"    sh -c 'tools/level-ip apps/udp/udp send 10.0.0.5 7001 hello | grep -qx hello'
 
-mkdir -p "$log.www" && echo "served by the kernel" > "$log.www/index.html"
+mkdir -p "$log.www"
+python3 -c 'import sys; sys.stdout.write("".join("line %05d served by the kernel\n" % i for i in range(2000)))' \
+    > "$log.www/index.html"   # ~60 KB, many segments
 python3 -m http.server 8000 --bind 10.0.0.5 --directory "$log.www" >/dev/null 2>&1 &
 sleep 0.5
-check "tcp: lvl-ip curl -> kernel http" sh -c 'tools/level-ip apps/curl/curl 10.0.0.5 8000 | grep -q "served by the kernel"'
+
+http_get() { # app -> fetches index.html through lvl-ip and compares the body byte for byte
+    timeout 120 tools/level-ip "apps/$1/$1" 10.0.0.5 8000 | sed '1,/^\r$/d' | cmp - "$log.www/index.html"
+}
+
+check "tcp: connection refused (RST)"   sh -c 'tools/level-ip apps/curl/curl 10.0.0.5 9999 2>&1 | grep -q "Connection refused"'
+
+# Upload from lvl-ip: the kernel only sends ACKs back, so losing them makes
+# lvl-ip's own retransmission timer (RFC 6298, Karn) do the recovery.
+python3 - <<'PY' >"$log.sink" 2>&1 &
+import hashlib, socket
+srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind(("10.0.0.5", 8100)); srv.listen()
+while True:
+    c, _ = srv.accept(); h = hashlib.sha256()
+    while (d := c.recv(65536)): h.update(d)
+    c.sendall(h.hexdigest().encode()); c.close()
+PY
+sleep 0.3
+
+upload() {
+    timeout 120 tools/level-ip python3 - <<'PY'
+import hashlib, socket, sys
+data = bytes(i * 31 % 256 for i in range(200000))
+s = socket.socket(); s.connect(("10.0.0.5", 8100)); s.sendall(data); s.shutdown(socket.SHUT_WR)
+sys.exit(0 if s.recv(64).decode() == hashlib.sha256(data).hexdigest() else 1)
+PY
+}
+
+# Impairments are applied to tap0 egress, i.e. kernel -> lvl-ip, as upstream's suites did
+for netem in "" "delay 300ms" "duplicate 50%" "loss 25%"; do
+    [ -n "$netem" ] && tc qdisc replace dev tap0 root netem $netem
+    label=${netem:-clean link}
+    check "tcp: curl, $label"      http_get curl
+    check "tcp: curl-poll, $label" http_get curl-poll
+    check "tcp: 200KB upload, $label" upload
+    [ -n "${LVLIP_E2E_VERBOSE:-}" ] && [ -n "$netem" ] && tc -s qdisc show dev tap0 | sed -n '1,3p'
+    [ -n "$netem" ] && tc qdisc del dev tap0 root
+done
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ] || { echo "--- test log"; cat "$log"; echo "--- stack log"; tail -30 "$log.stack"; }
