@@ -161,7 +161,9 @@ static int ipc_connect(int sockfd, struct ipc_msg *msg)
     pid_t pid = msg->pid;
     int rc = -1;
 
-    rc = _connect(pid, payload->sockfd, &payload->addr, payload->addrlen);
+    struct sockaddr addr = payload->addr;
+
+    rc = _connect(pid, payload->sockfd, &addr, payload->addrlen);
 
     return ipc_write_rc(sockfd, pid, IPC_CONNECT, rc);
 }
@@ -272,7 +274,10 @@ static int ipc_getsockopt(int sockfd, struct ipc_msg *msg)
     pid_t pid = msg->pid;
     int rc = -1;
 
-    rc = _getsockopt(pid, opts->fd, opts->level, opts->optname, opts->optval, &opts->optlen);
+    socklen_t optlen = opts->optlen;
+
+    rc = _getsockopt(pid, opts->fd, opts->level, opts->optname, opts->optval, &optlen);
+    opts->optlen = optlen;
 
     int resplen = sizeof(struct ipc_msg) + sizeof(struct ipc_err) + sizeof(struct ipc_sockopt) + opts->optlen;
     struct ipc_msg *response = alloca(resplen);
@@ -465,11 +470,11 @@ void *start_ipc_listener()
 {
     int fd, rc, datasock;
     struct sockaddr_un un;
-    char *sockname = "/tmp/lvlip.socket";
+    const char sockname[] = "/tmp/lvlip.socket";
 
     unlink(sockname);
     
-    if (strnlen(sockname, sizeof(un.sun_path)) == sizeof(un.sun_path)) {
+    if (sizeof(sockname) > sizeof(un.sun_path)) {
         // Path is too long
         print_err("Path for UNIX socket is too long\n");
         exit(-1);

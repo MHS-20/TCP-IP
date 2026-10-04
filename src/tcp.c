@@ -244,12 +244,7 @@ out:
 
 int tcp_recv_notify(struct sock *sk)
 {
-    if (&(sk->recv_wait)) {
-        return wait_wakeup(&sk->recv_wait);
-    }
-
-    // No recv wait lock
-    return -1;
+    return wait_wakeup(&sk->recv_wait);
 }
 
 int tcp_close(struct sock *sk)

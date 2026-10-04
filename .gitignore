@@ -6,3 +6,6 @@ a.out
 lvl-ip
 tests/venv
 vgcore*
+tools/liblevelip.so
+apps/curl/curl
+apps/curl-poll/curl-poll

@@ -1,4 +1,4 @@
-CPPFLAGS = -I ../include -Wall -Werror
+CPPFLAGS = -I ../include -std=gnu11 -Wall -Werror
 
 all: liblevelip
 
