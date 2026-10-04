@@ -31,10 +31,10 @@ static int tun_alloc(char *dev)
     struct ifreq ifr;
     int fd, err;
 
-    if( (fd = open("/dev/net/tap", O_RDWR)) < 0 ) {
+    if( (fd = open("/dev/net/tun", O_RDWR)) < 0 &&
+        (fd = open("/dev/net/tap", O_RDWR)) < 0 ) {
         perror("Cannot open TUN/TAP dev\n"
-                    "Make sure one exists with " 
-                    "'$ mknod /dev/net/tap c 10 200'");
+                    "Make sure /dev/net/tun exists and is accessible");
         exit(1);
     }
 
