@@ -3,7 +3,7 @@ CPPFLAGS = -I include -std=gnu11 -Wall -Werror -pthread
 src = $(wildcard src/*/*.c)
 obj = $(patsubst src/%.c, build/%.o, $(src))
 headers = $(wildcard include/*.h)
-apps = apps/curl/curl
+apps = apps/curl/curl apps/udp/udp
 
 lvl-ip: $(obj)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(obj) -o lvl-ip
@@ -22,6 +22,7 @@ apps: $(apps)
 	$(MAKE) -C tools
 	$(MAKE) -C apps/curl
 	$(MAKE) -C apps/curl-poll
+	$(MAKE) -C apps/udp
 
 all: lvl-ip apps
 

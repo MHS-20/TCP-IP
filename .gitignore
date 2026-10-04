@@ -10,3 +10,4 @@ tools/liblevelip.so
 apps/curl/curl
 apps/curl-poll/curl-poll
 tests/unit/test_*[!.c]
+apps/udp/udp
