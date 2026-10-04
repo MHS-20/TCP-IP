@@ -37,5 +37,10 @@ struct icmp_v4_dst_unreachable {
 
 void icmpv4_incoming(struct sk_buff *skb);
 void icmpv4_reply(struct sk_buff *skb);
+void icmpv4_send_unreachable(struct sk_buff *in, uint8_t code);
+
+#define ICMP_V4_NET_UNREACH   0
+#define ICMP_V4_PROTO_UNREACH 2
+#define ICMP_V4_PORT_UNREACH  3
 
 #endif

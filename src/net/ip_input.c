@@ -68,6 +68,7 @@ int ip_rcv(struct sk_buff *skb)
         return 0;
     default:
         print_err("Unknown IP header proto\n");
+        icmpv4_send_unreachable(skb, ICMP_V4_PROTO_UNREACH);
         goto drop_pkt;
     }
 
