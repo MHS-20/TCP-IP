@@ -14,6 +14,8 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static struct sk_buff *arp_alloc_skb()
 {
     struct sk_buff *skb = alloc_skb(ETH_HDR_LEN + ARP_HDR_LEN + ARP_DATA_LEN);
+    /* The rx buffer is reused for the reply, rebuilt from an empty length */
+    skb->len = 0;
     skb_reserve(skb, ETH_HDR_LEN + ARP_HDR_LEN + ARP_DATA_LEN);
     skb->protocol = htons(ETH_P_ARP);
     
@@ -173,6 +175,8 @@ void arp_reply(struct sk_buff *skb, struct netdev *netdev)
 
     arphdr = arp_hdr(skb);
 
+    /* The rx buffer is reused for the reply, rebuilt from an empty length */
+    skb->len = 0;
     skb_reserve(skb, ETH_HDR_LEN + ARP_HDR_LEN + ARP_DATA_LEN);
     skb_push(skb, ARP_HDR_LEN + ARP_DATA_LEN);
 

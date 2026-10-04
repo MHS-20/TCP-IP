@@ -8,7 +8,12 @@ void icmpv4_incoming(struct sk_buff *skb)
     struct iphdr *iphdr = ip_hdr(skb);
     struct icmp_v4 *icmp = (struct icmp_v4 *) iphdr->data;
 
-    //TODO: Check csum
+    uint16_t icmp_len = ip_len(iphdr);
+
+    if (icmp_len < sizeof(struct icmp_v4) || checksum(icmp, icmp_len, 0) != 0) {
+        print_err("ICMPv4 dropped: bad length or checksum\n");
+        goto drop_pkt;
+    }
 
     switch (icmp->type) {
     case ICMP_V4_ECHO:
@@ -37,6 +42,8 @@ void icmpv4_reply(struct sk_buff *skb)
     
     uint16_t icmp_len = iphdr->len - (iphdr->ihl * 4);
 
+    /* The rx buffer is reused for the reply, rebuilt from an empty length */
+    skb->len = 0;
     skb_reserve(skb, ETH_HDR_LEN + IP_HDR_LEN + icmp_len);
     skb_push(skb, icmp_len);
     

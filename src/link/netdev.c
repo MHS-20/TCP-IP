@@ -88,11 +88,20 @@ void *netdev_rx_loop()
     while (running) {
         struct sk_buff *skb = alloc_skb(BUFLEN);
         
-        if (tun_read((char *)skb->data, BUFLEN) < 0) { 
+        int len = tun_read((char *)skb->data, BUFLEN);
+
+        if (len < 0) {
             perror("ERR: Read from tun_fd");
             free_skb(skb);
             return NULL;
         }
+
+        if (len < ETH_HDR_LEN) {
+            free_skb(skb);
+            continue;
+        }
+
+        skb->len = len;
 
         netdev_receive(skb);
     }

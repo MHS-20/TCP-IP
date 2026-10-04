@@ -29,6 +29,13 @@ int ip_rcv(struct sk_buff *skb)
         goto drop_pkt;
     }
 
+    uint16_t total_len = ntohs(ih->len);
+
+    if (total_len < ih->ihl * 4 || total_len > skb->len - ETH_HDR_LEN) {
+        print_err("IPv4 total length does not match received frame\n");
+        goto drop_pkt;
+    }
+
     if (ih->ttl == 0) {
         //TODO: Send ICMP error
         print_err("Time to live of datagram reached 0\n");
