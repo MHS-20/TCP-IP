@@ -1,6 +1,6 @@
 CPPFLAGS = -I include -std=gnu11 -Wall -Werror -pthread
 
-src = $(wildcard src/*.c)
+src = $(wildcard src/*/*.c)
 obj = $(patsubst src/%.c, build/%.o, $(src))
 headers = $(wildcard include/*.h)
 apps = apps/curl/curl
@@ -11,7 +11,8 @@ lvl-ip: $(obj)
 	@echo "lvl-ip needs CAP_NET_ADMIN:"
 	-sudo setcap cap_setpcap,cap_net_admin=ep lvl-ip
 
-build/%.o: src/%.c ${headers}
+build/%.o: src/%.c $(headers)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 debug: CFLAGS+= -DDEBUG_SOCKET -DDEBUG_TCP -g -fsanitize=thread
@@ -33,4 +34,6 @@ test: debug apps
 	cd tests && ./test-run-all
 
 clean:
-	rm build/*.o lvl-ip
+	rm -rf build lvl-ip
+
+.PHONY: debug apps all test clean
