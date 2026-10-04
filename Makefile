@@ -33,7 +33,11 @@ test: debug apps
 	@echo
 	cd tests && ./test-run-all
 
+unit:
+	$(MAKE) -C tests/unit run
+
 clean:
 	rm -rf build lvl-ip
+	$(MAKE) -C tests/unit clean
 
-.PHONY: debug apps all test clean
+.PHONY: debug apps all test unit clean
