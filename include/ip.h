@@ -68,5 +68,6 @@ static inline uint32_t ip_parse(char *addr)
 int ip_rcv(struct sk_buff *skb);
 struct sk_buff *ip_reassemble(struct sk_buff *skb);
 int ip_output(struct sock *sk, struct sk_buff *skb);
+int ip_output_daddr(uint32_t daddr, struct sk_buff *skb, int dont_fragment);
 
 #endif
