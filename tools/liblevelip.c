@@ -40,6 +40,7 @@ static int (*_getpeername)(int socket, struct sockaddr *restrict address,
                            socklen_t *restrict address_len) = NULL;
 static int (*_getsockname)(int socket, struct sockaddr *restrict address,
                            socklen_t *restrict address_len) = NULL;
+static int (*_bind)(int sockfd, const struct sockaddr *addr, socklen_t addrlen) = NULL;
 
 static int lvlip_socks_count = 0;
 static LIST_HEAD(lvlip_socks);
@@ -61,11 +62,19 @@ static int is_socket_supported(int domain, int type, int protocol)
 {
     if (domain != AF_INET) return 0;
 
-    if (!(type & SOCK_STREAM)) return 0;
+    switch (type & ~(SOCK_NONBLOCK | SOCK_CLOEXEC)) {
+    case SOCK_STREAM:
+        return protocol == 0 || protocol == IPPROTO_TCP;
+    case SOCK_DGRAM:
+        return protocol == 0 || protocol == IPPROTO_UDP;
+    default:
+        return 0;
+    }
+}
 
-    if (protocol != 0 && protocol != IPPROTO_TCP) return 0;
-
-    return 1;
+static ssize_t real_read(int fd, void *buf, size_t len)
+{
+    return _read(fd, buf, len);
 }
 
 static int init_socket(char *sockname)
@@ -336,6 +345,31 @@ ssize_t read(int sockfd, void *buf, size_t len)
     return data->len;
 }
 
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+{
+    struct lvlip_sock *sock = lvlip_get_sock(sockfd);
+
+    if (sock == NULL) return _bind(sockfd, addr, addrlen);
+
+    lvl_sock_dbg("Bind called", sock);
+
+    if (addr == NULL || addrlen < sizeof(struct sockaddr_in)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int msglen = sizeof(struct ipc_msg) + sizeof(struct ipc_bind);
+    struct ipc_msg *msg = alloca(msglen);
+    msg->type = IPC_BIND;
+    msg->pid = getpid();
+
+    struct ipc_bind payload = { .sockfd = sockfd, .addrlen = sizeof(struct sockaddr_in) };
+    memcpy(&payload.addr, addr, sizeof(struct sockaddr_in));
+    memcpy(msg->data, &payload, sizeof(payload));
+
+    return transmit_lvlip(sock->lvlfd, msg, msglen);
+}
+
 ssize_t send(int fd, const void *buf, size_t len, int flags)
 {
     return sendto(fd, buf, len, flags, NULL, 0);
@@ -345,10 +379,29 @@ ssize_t sendto(int fd, const void *buf, size_t len,
                int flags, const struct sockaddr *dest_addr,
                socklen_t dest_len)
 {
-    if (!lvlip_get_sock(fd)) return _sendto(fd, buf, len,
-                                        flags, dest_addr, dest_len);
+    struct lvlip_sock *sock = lvlip_get_sock(fd);
 
-    return write(fd, buf, len);
+    if (sock == NULL) return _sendto(fd, buf, len, flags, dest_addr, dest_len);
+
+    lvl_sock_dbg("Sendto called", sock);
+
+    int msglen = sizeof(struct ipc_msg) + sizeof(struct ipc_sendto) + len;
+    struct ipc_msg *msg = malloc(msglen);
+    msg->type = IPC_SENDTO;
+    msg->pid = getpid();
+
+    struct ipc_sendto payload = { .sockfd = fd, .len = len, .addrlen = 0 };
+    if (dest_addr != NULL && dest_len >= sizeof(struct sockaddr_in)) {
+        memcpy(&payload.addr, dest_addr, sizeof(struct sockaddr_in));
+        payload.addrlen = sizeof(struct sockaddr_in);
+    }
+    memcpy(msg->data, &payload, sizeof(payload));
+    memcpy(((struct ipc_sendto *)msg->data)->buf, buf, len);
+
+    int rc = transmit_lvlip(sock->lvlfd, msg, msglen);
+    free(msg);
+
+    return rc;
 }
 
 ssize_t recv(int fd, void *buf, size_t len, int flags)
@@ -360,10 +413,67 @@ ssize_t recvfrom(int fd, void *restrict buf, size_t len,
                  int flags, struct sockaddr *restrict address,
                  socklen_t *restrict addrlen)
 {
-    if (!lvlip_get_sock(fd)) return _recvfrom(fd, buf, len,
-                                          flags, address, addrlen);
+    struct lvlip_sock *sock = lvlip_get_sock(fd);
 
-    return read(fd, buf, len);
+    if (sock == NULL) return _recvfrom(fd, buf, len, flags, address, addrlen);
+
+    lvl_sock_dbg("Recvfrom called", sock);
+
+    int pid = getpid();
+    int msglen = sizeof(struct ipc_msg) + sizeof(struct ipc_recvfrom);
+    struct ipc_msg *msg = alloca(msglen);
+    msg->type = IPC_RECVFROM;
+    msg->pid = pid;
+
+    struct ipc_recvfrom payload = { .sockfd = fd, .len = len };
+    memcpy(msg->data, &payload, sizeof(payload));
+
+    if (_write(sock->lvlfd, (char *)msg, msglen) == -1) {
+        perror("Error on writing IPC recvfrom");
+        return -1;
+    }
+
+    /* Fixed-size header first, then exactly the datagram bytes it announces */
+    int hlen = sizeof(struct ipc_msg) + sizeof(struct ipc_err) + sizeof(struct ipc_recvfrom);
+    char *rbuf = malloc(hlen + len);
+
+    if (ipc_read_full(real_read, sock->lvlfd, rbuf, hlen) != 0) {
+        perror("Could not read IPC recvfrom response");
+        free(rbuf);
+        return -1;
+    }
+
+    struct ipc_msg *response = (struct ipc_msg *) rbuf;
+    struct ipc_err *error = (struct ipc_err *) response->data;
+    struct ipc_recvfrom *data = (struct ipc_recvfrom *) error->data;
+    int rc = error->rc;
+
+    if (response->type != IPC_RECVFROM || response->pid != pid || data->len > len) {
+        print_err("ERR: unexpected IPC recvfrom response\n");
+        free(rbuf);
+        return -1;
+    }
+
+    if (ipc_read_full(real_read, sock->lvlfd, rbuf + hlen, data->len) != 0) {
+        perror("Could not read IPC recvfrom data");
+        free(rbuf);
+        return -1;
+    }
+
+    if (rc < 0) {
+        errno = error->err;
+    } else {
+        memcpy(buf, data->buf, data->len);
+
+        if (address != NULL && addrlen != NULL) {
+            socklen_t n = *addrlen < sizeof(data->addr) ? *addrlen : sizeof(data->addr);
+            memcpy(address, &data->addr, n);
+            *addrlen = data->addrlen;
+        }
+    }
+
+    free(rbuf);
+    return rc;
 }
 
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
@@ -800,6 +910,7 @@ int __libc_start_main(int (*main) (int, char * *, char * *), int argc,
     _close = dlsym(RTLD_NEXT, "close");
     _getpeername = dlsym(RTLD_NEXT, "getpeername");
     _getsockname = dlsym(RTLD_NEXT, "getsockname");
+    _bind = dlsym(RTLD_NEXT, "bind");
 
     list_init(&lvlip_socks);
 

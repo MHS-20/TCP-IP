@@ -26,6 +26,9 @@ void *start_ipc_listener();
 #define IPC_SETSOCKOPT  0x0009
 #define IPC_GETPEERNAME 0x000A
 #define IPC_GETSOCKNAME 0x000B
+#define IPC_BIND        0x000C
+#define IPC_SENDTO      0x000D
+#define IPC_RECVFROM    0x000E
 
 struct ipc_thread {
     struct list_head list;
@@ -98,6 +101,43 @@ struct ipc_sockopt {
     socklen_t optlen;
     uint8_t optval[];
 } __attribute__((packed));
+
+struct ipc_bind {
+    int sockfd;
+    struct sockaddr_in addr;
+    socklen_t addrlen;
+} __attribute__((packed));
+
+/* addrlen == 0 means "no destination": send to the connected peer */
+struct ipc_sendto {
+    int sockfd;
+    size_t len;
+    struct sockaddr_in addr;
+    socklen_t addrlen;
+    uint8_t buf[];
+} __attribute__((packed));
+
+struct ipc_recvfrom {
+    int sockfd;
+    size_t len;
+    struct sockaddr_in addr;
+    socklen_t addrlen;
+    uint8_t buf[];
+} __attribute__((packed));
+
+/* Reads exactly len bytes from a stream fd; returns 0 on success, -1 otherwise */
+static inline int ipc_read_full(ssize_t (*rd)(int, void *, size_t), int fd, void *buf, size_t len)
+{
+    size_t got = 0;
+
+    while (got < len) {
+        ssize_t n = rd(fd, (char *)buf + got, len - got);
+        if (n <= 0) return -1;
+        got += n;
+    }
+
+    return 0;
+}
 
 struct ipc_sockname {
     int socket;

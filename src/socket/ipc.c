@@ -137,22 +137,86 @@ static int ipc_write(int sockfd, struct ipc_msg *msg)
     memset(buf, 0, payload->len);
     memcpy(buf, payload->buf, payload->len > head ? head : payload->len);
 
-    // Guard for payload that is longer than initial IPC_BUFLEN
-    if (payload->len > head) {
-        int tail = payload->len - head;
-        int res = read(sockfd, &buf[head], tail);
-
-        if (res == -1) {
-            perror("Read on IPC payload guard");
-            return -1;
-        } else if (res != tail) {
-            print_err("Hmm, we did not read exact payload amount in IPC write\n");
-        }
+    // Payload longer than the first IPC_BUFLEN read: fetch the rest
+    if (payload->len > head &&
+        ipc_read_full(read, sockfd, &buf[head], payload->len - head) != 0) {
+        perror("Read on IPC payload guard");
+        return -1;
     }
         
     rc = _write(pid, payload->sockfd, buf, payload->len);
 
     return ipc_write_rc(sockfd, pid, IPC_WRITE, rc);
+}
+
+static int ipc_bind(int sockfd, struct ipc_msg *msg)
+{
+    struct ipc_bind *payload = (struct ipc_bind *)msg->data;
+    struct sockaddr_in addr = payload->addr;
+
+    int rc = _bind(msg->pid, payload->sockfd, (struct sockaddr *)&addr, payload->addrlen);
+
+    return ipc_write_rc(sockfd, msg->pid, IPC_BIND, rc);
+}
+
+static int ipc_sendto(int sockfd, struct ipc_msg *msg)
+{
+    struct ipc_sendto *payload = (struct ipc_sendto *) msg->data;
+    int head = IPC_BUFLEN - sizeof(struct ipc_sendto) - sizeof(struct ipc_msg);
+    size_t len = payload->len;
+    struct sockaddr_in addr = payload->addr;
+    socklen_t addrlen = payload->addrlen;
+    char *buf = malloc(len ? len : 1);
+
+    memcpy(buf, payload->buf, len > head ? head : len);
+
+    if (len > head && ipc_read_full(read, sockfd, &buf[head], len - head) != 0) {
+        perror("Read on IPC sendto payload");
+        free(buf);
+        return -1;
+    }
+
+    int rc = _sendto(msg->pid, payload->sockfd, buf, len,
+                     addrlen ? (struct sockaddr *)&addr : NULL, addrlen);
+    free(buf);
+
+    return ipc_write_rc(sockfd, msg->pid, IPC_SENDTO, rc);
+}
+
+static int ipc_recvfrom(int sockfd, struct ipc_msg *msg)
+{
+    struct ipc_recvfrom *requested = (struct ipc_recvfrom *) msg->data;
+    size_t len = requested->len;
+    struct sockaddr_in addr = { 0 };
+    socklen_t addrlen = sizeof(addr);
+
+    int resplen = sizeof(struct ipc_msg) + sizeof(struct ipc_err) +
+        sizeof(struct ipc_recvfrom) + len;
+    struct ipc_msg *response = calloc(1, resplen);
+    struct ipc_err *error = (struct ipc_err *) response->data;
+    struct ipc_recvfrom *actual = (struct ipc_recvfrom *) error->data;
+
+    int rlen = _recvfrom(msg->pid, requested->sockfd, actual->buf, len,
+                         (struct sockaddr *)&addr, &addrlen);
+
+    response->type = IPC_RECVFROM;
+    response->pid = msg->pid;
+    error->rc = rlen < 0 ? -1 : rlen;
+    error->err = rlen < 0 ? -rlen : 0;
+    actual->sockfd = requested->sockfd;
+    actual->len = rlen > 0 ? rlen : 0;
+    actual->addr = addr;
+    actual->addrlen = rlen >= 0 ? addrlen : 0;
+
+    /* Only send the bytes actually received */
+    resplen -= len - actual->len;
+
+    if (ipc_try_send(sockfd, (char *)response, resplen) == -1) {
+        perror("Error on writing IPC recvfrom response");
+    }
+
+    free(response);
+    return 0;
 }
 
 static int ipc_connect(int sockfd, struct ipc_msg *msg)
@@ -433,6 +497,12 @@ static int demux_ipc_socket_call(int sockfd, char *cmdbuf, int blen)
         return ipc_getpeername(sockfd, msg);
     case IPC_GETSOCKNAME:
         return ipc_getsockname(sockfd, msg);
+    case IPC_BIND:
+        return ipc_bind(sockfd, msg);
+    case IPC_SENDTO:
+        return ipc_sendto(sockfd, msg);
+    case IPC_RECVFROM:
+        return ipc_recvfrom(sockfd, msg);
     default:
         print_err("No such IPC type %d\n", msg->type);
         break;
