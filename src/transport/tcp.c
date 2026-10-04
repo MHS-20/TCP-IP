@@ -27,6 +27,7 @@ struct net_ops tcp_ops = {
     .read = &tcp_read,
     .recv_notify = &tcp_recv_notify,
     .close = &tcp_close,
+    .shutdown = &tcp_shutdown,
     .abort = &tcp_abort,
 };
 
@@ -270,14 +271,16 @@ int tcp_close(struct sock *sk)
 {
     switch (sk->state) {
     case TCP_CLOSE:
+        /* Respond with "error:  connection closing". */
+        sk->err = -EBADF;
+        return -1;
     case TCP_CLOSING:
     case TCP_LAST_ACK:
     case TCP_TIME_WAIT:
     case TCP_FIN_WAIT_1:
     case TCP_FIN_WAIT_2:
-        /* Respond with "error:  connection closing". */
-        sk->err = -EBADF;
-        return -1;
+        /* Our FIN is already queued, e.g. after shutdown(SHUT_WR) */
+        return 0;
     case TCP_LISTEN:
     case TCP_SYN_SENT:
     case TCP_SYN_RECEIVED:
@@ -300,6 +303,26 @@ int tcp_close(struct sock *sk)
     }
 
     return 0;
+}
+
+/* Half-close (RFC 793 CLOSE on the sending side): queue a FIN, keep receiving */
+int tcp_shutdown(struct sock *sk, int how)
+{
+    if (how == SHUT_RD) return 0;
+
+    switch (sk->state) {
+    case TCP_ESTABLISHED:
+    case TCP_CLOSE_WAIT:
+        return tcp_close(sk);
+    case TCP_FIN_WAIT_1:
+    case TCP_FIN_WAIT_2:
+    case TCP_CLOSING:
+    case TCP_LAST_ACK:
+    case TCP_TIME_WAIT:
+        return 0;
+    default:
+        return -ENOTCONN;
+    }
 }
 
 int tcp_abort(struct sock *sk)

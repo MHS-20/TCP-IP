@@ -29,6 +29,7 @@ void *start_ipc_listener();
 #define IPC_BIND        0x000C
 #define IPC_SENDTO      0x000D
 #define IPC_RECVFROM    0x000E
+#define IPC_SHUTDOWN    0x000F
 
 struct ipc_thread {
     struct list_head list;
@@ -74,6 +75,11 @@ struct ipc_read {
 
 struct ipc_close {
     int sockfd;
+} __attribute__((packed));
+
+struct ipc_shutdown {
+    int sockfd;
+    int how;
 } __attribute__((packed));
 
 struct ipc_pollfd {

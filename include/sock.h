@@ -20,6 +20,7 @@ struct net_ops {
     int (*recvfrom) (struct sock *sk, void *buf, int len, struct sockaddr_in *src);
     int (*recv_notify) (struct sock *sk);
     int (*close) (struct sock *sk);
+    int (*shutdown) (struct sock *sk, int how);   /* optional */
     int (*abort) (struct sock *sk);
 };
 

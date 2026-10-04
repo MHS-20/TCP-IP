@@ -25,6 +25,7 @@ int inet_sendto(struct socket *sock, const void *buf, int len,
 int inet_recvfrom(struct socket *sock, void *buf, int len,
                   struct sockaddr *addr, socklen_t *addr_len);
 int inet_close(struct socket *sock);
+int inet_shutdown(struct socket *sock, int how);
 int inet_free(struct socket *sock);
 int inet_abort(struct socket *sock);
 int inet_getpeername(struct socket *sock, struct sockaddr *restrict address,

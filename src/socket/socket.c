@@ -426,6 +426,22 @@ int _recvfrom(pid_t pid, int sockfd, void *buf, const unsigned int count,
     return rc;
 }
 
+int _shutdown(pid_t pid, int sockfd, int how)
+{
+    struct socket *sock;
+
+    if ((sock = get_socket(pid, sockfd)) == NULL) {
+        print_err("Shutdown: could not find socket (fd %u) for connection (pid %d)\n", sockfd, pid);
+        return -EBADF;
+    }
+
+    socket_wr_acquire(sock);
+    int rc = sock->ops->shutdown(sock, how);
+    socket_release(sock);
+
+    return rc;
+}
+
 int _poll(pid_t pid, struct pollfd fds[], nfds_t nfds, int timeout)
 {
     for (;;) {

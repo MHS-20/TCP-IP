@@ -48,6 +48,7 @@ struct sock_ops {
     int (*recvfrom) (struct socket *sock, void *buf, int len,
                      struct sockaddr *addr, socklen_t *addr_len);
     int (*close) (struct socket *sock);
+    int (*shutdown) (struct socket *sock, int how);
     int (*free) (struct socket *sock);
     int (*abort) (struct socket *sock);
     int (*poll) (struct socket *sock);
@@ -81,6 +82,7 @@ int _connect(pid_t pid, int sockfd, const struct sockaddr *addr, socklen_t addrl
 int _write(pid_t pid, int sockfd, const void *buf, const unsigned int count);
 int _read(pid_t pid, int sockfd, void *buf, const unsigned int count);
 int _close(pid_t pid, int sockfd);
+int _shutdown(pid_t pid, int sockfd, int how);
 int _bind(pid_t pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 int _sendto(pid_t pid, int sockfd, const void *buf, const unsigned int count,
             const struct sockaddr *addr, socklen_t addrlen);

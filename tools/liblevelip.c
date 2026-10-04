@@ -41,6 +41,7 @@ static int (*_getpeername)(int socket, struct sockaddr *restrict address,
 static int (*_getsockname)(int socket, struct sockaddr *restrict address,
                            socklen_t *restrict address_len) = NULL;
 static int (*_bind)(int sockfd, const struct sockaddr *addr, socklen_t addrlen) = NULL;
+static int (*_shutdown)(int sockfd, int how) = NULL;
 
 static int lvlip_socks_count = 0;
 static LIST_HEAD(lvlip_socks);
@@ -220,6 +221,25 @@ int close(int fd)
     free_socket(sock->lvlfd);
 
     return rc;
+}
+
+int shutdown(int sockfd, int how)
+{
+    struct lvlip_sock *sock = lvlip_get_sock(sockfd);
+
+    if (sock == NULL) return _shutdown(sockfd, how);
+
+    lvl_sock_dbg("Shutdown called", sock);
+
+    int msglen = sizeof(struct ipc_msg) + sizeof(struct ipc_shutdown);
+    struct ipc_msg *msg = alloca(msglen);
+    msg->type = IPC_SHUTDOWN;
+    msg->pid = getpid();
+
+    struct ipc_shutdown payload = { .sockfd = sockfd, .how = how };
+    memcpy(msg->data, &payload, sizeof(payload));
+
+    return transmit_lvlip(sock->lvlfd, msg, msglen);
 }
 
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
@@ -911,6 +931,7 @@ int __libc_start_main(int (*main) (int, char * *, char * *), int argc,
     _getpeername = dlsym(RTLD_NEXT, "getpeername");
     _getsockname = dlsym(RTLD_NEXT, "getsockname");
     _bind = dlsym(RTLD_NEXT, "bind");
+    _shutdown = dlsym(RTLD_NEXT, "shutdown");
 
     list_init(&lvlip_socks);
 

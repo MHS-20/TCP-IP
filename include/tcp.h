@@ -255,6 +255,7 @@ int tcp_send_reset(struct tcp_sock *tsk);
 int tcp_send_challenge_ack(struct sock *sk, struct sk_buff *skb);
 int tcp_recv_notify(struct sock *sk);
 int tcp_close(struct sock *sk);
+int tcp_shutdown(struct sock *sk, int how);
 int tcp_abort(struct sock *sk);
 int tcp_done(struct sock *sk);
 void tcp_rtt(struct tcp_sock *tsk);

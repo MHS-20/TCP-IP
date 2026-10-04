@@ -31,6 +31,7 @@ static struct sock_ops inet_stream_ops = {
     .sendto = &inet_sendto,
     .recvfrom = &inet_recvfrom,
     .close = &inet_close,
+    .shutdown = &inet_shutdown,
     .free = &inet_free,
     .abort = &inet_abort,
     .getpeername = &inet_getpeername,
@@ -45,6 +46,7 @@ static struct sock_ops inet_dgram_ops = {
     .sendto = &inet_sendto,
     .recvfrom = &inet_recvfrom,
     .close = &inet_close,
+    .shutdown = &inet_shutdown,
     .free = &inet_free,
     .abort = &inet_abort,
     .getpeername = &inet_getpeername,
@@ -302,6 +304,16 @@ int inet_close(struct socket *sock)
     struct sock *sk = sock->sk;
 
     return sock->sk->ops->close(sk);
+}
+
+int inet_shutdown(struct socket *sock, int how)
+{
+    struct sock *sk = sock->sk;
+
+    if (how != SHUT_RD && how != SHUT_WR && how != SHUT_RDWR) return -EINVAL;
+    if (sk->ops->shutdown) return sk->ops->shutdown(sk, how);
+
+    return sk->dport ? 0 : -ENOTCONN;
 }
 
 int inet_free(struct socket *sock)
