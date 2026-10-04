@@ -1,12 +1,21 @@
 # Development
 
-Level-IP is at a very alpha stage, has many hardcoded values and is not really intuitive to develop on. 
+This document covers testing, debugging and the feature set.
 
-This document aims to provide information on the current features, roadmap and overall development routine. 
+# Testing
+
+    make unit    # host-only tests in tests/unit, built with ASan and UBSan
+    make e2e     # tests/netns/run.sh: real TAP device in an unprivileged namespace
+    make test    # both
+
+Unit tests link single source files against stubs (see
+`tests/unit/test_ip_fragment.c`, which replaces routing and ARP to capture
+outgoing fragments). Set `LVLIP_E2E_VERBOSE=1` to print `tc` qdisc statistics
+after each impaired run of the end-to-end suite.
 
 # Debugging
 
-Build Level-IP with `make debug`. It adds debug symbols and by default, enables Google's Address Sanitizer.
+Build Level-IP with `make debug`. It adds debug symbols, enables socket and TCP debug output, and builds with Thread Sanitizer.
 
 ## Debug Output
 
@@ -36,7 +45,7 @@ Refer to https://sourceware.org/gdb/current/onlinedocs/gdb/Threads.html for debu
 
 ## Debugging Memory Allocation and Use
 
-One of the useful debugging aids so far has been Address Sanitizer by Google. It is built in to newer GCC versions, and it is activated with `-fsanitize=address`. Sure enough, `make debug` enables this by default.
+Address Sanitizer is built in to newer GCC versions and is activated with `-fsanitize=address`. The unit tests use it; for the daemon, replace the sanitizer in the `debug` target.
 
 https://github.com/google/sanitizers/wiki/AddressSanitizer
 
@@ -56,33 +65,40 @@ TODO: Actual style guidelines, so far I have been just winging it.
 
 # Features
 
-First and foremost, Level-IP aims to be just an introduction to TCP/IP stacks. Hence, convenient features are prioritized over e.g. raw performance improvements. 
+The aim is an introduction to TCP/IP stacks, so readability is preferred over
+performance.
 
 ## Current Features
 
-* One hardcoded interface/netdev (IP 10.0.0.4)
-* One hardcoded socket
+* One interface (IP 10.0.0.4, gateway 10.0.0.5) on a TAP device
 * Ethernet II frame handling
 * ARP request/reply, simple caching
-* ICMP pings and replies 
-* IPv4 packet handling, checksum
-* One hardcoded route table with default netdevice
-* TCPv4 Handshake
-* TCP data transmission
-* TCP RFC793 "Segment Arrives"
-* TCP RFC6298 Retransmission calculation
-* TCP RFC793 User Timeout
+* IPv4: header and length validation, checksum, unique datagram ids
+* IPv4 fragment reassembly (30 s timeout, overlapping fragments dropped)
+* IPv4 fragmentation of oversized datagrams without DF
+* ICMPv4: echo reply, checksum validation, Destination Unreachable (protocol, port)
+* One static route table with default gateway
+* TCP: handshake, data transfer, RFC 793 "Segment Arrives", checksum validation
+* TCP: RFC 6298 retransmission timeout with Karn's algorithm, RFC 793 user timeout
+* TCP: out-of-order queue and SACK blocks
+* TCP: half-close with shutdown(SHUT_WR)
+* TCP: RFC 6528 initial sequence numbers (keyed FNV-1a, not a cryptographic hash)
+* UDP: datagram sockets, checksums, bind/connect/sendto/recvfrom, port unreachable
+* Random free ephemeral ports (49152-65535) per protocol
+* LD_PRELOAD shim for TCP and UDP sockets
+
+## Known Limitations
+
+* No TCP server side (listen/accept); bind only selects the local port
+* UDP sendto waits up to 100 ms for ARP resolution while holding the socket lock
+* Socket fds start at 4097 and are not reserved with the kernel
+* select/ppoll are not intercepted; poll is emulated by polling every 10 ms
 
 ## Upcoming features
 
-* IP Fragmentation
-* IP/ICMP Diagnostics
-* TCP Window Management
-* TCP Silly Window Syndrome Avoidance
-* TCP Zero-Window Probes
+* TCP listen/accept
+* TCP Window Management, Silly Window Syndrome Avoidance, Zero-Window Probes
 * TCP Congestion Control
-* TCP Selective Acknowledgments (SACK)
-* Server socket API calls (bind, accept...)
-* Raw Socket (for arping, ping..)
+* ICMP errors delivered to sockets (e.g. ECONNREFUSED on connected UDP)
+* Raw sockets (for arping, ping)
 * 'select' socket API call
-* ...

@@ -1,30 +1,68 @@
-# Level-IP [![Build Status](https://travis-ci.org/saminiir/level-ip.svg?branch=master)](https://travis-ci.org/saminiir/level-ip)
+# TCP-IP
 
-Level-IP is a Linux userspace TCP/IP stack, implemented with TUN/TAP devices.
+A Linux userspace TCP/IP stack on a TAP device, built as a reference
+implementation for learning: Ethernet, ARP, IPv4 (with fragmentation),
+ICMPv4, TCP and UDP, plus an `LD_PRELOAD` shim that runs unmodified
+programs (`curl`, `python3`, …) on top of it.
 
-The main goals are to:
-* Learn TCP/IP
-* Learn Linux systems/network programming
-* Learn Linux Socket API
+It started from [Level-IP](https://github.com/saminiir/level-ip), the code
+behind the blog series *Let's code a TCP/IP stack* (parts 1–5), and extends it
+with UDP, IP fragmentation and reassembly, input validation and a test suite.
+See [THIRD_PARTY.md](THIRD_PARTY.md) for the upstream notice.
 
-The results of the learning experience will be accompanied by explanatory blog posts:
+## What it implements
 
-- Part 1, Ethernet & ARP: http://www.saminiir.com/lets-code-tcp-ip-stack-1-ethernet-arp
-- Part 2, IPv4 & ICMPv4: http://www.saminiir.com/lets-code-tcp-ip-stack-2-ipv4-icmpv4
-- Part 3, TCP Basics & Handshake: http://www.saminiir.com/lets-code-tcp-ip-stack-3-tcp-handshake/
-- Part 4, TCP Data Flow & Socket API: http://www.saminiir.com/lets-code-tcp-ip-stack-4-tcp-data-flow-socket-api/
-- Part 5, TCP Retransmission: http://www.saminiir.com/lets-code-tcp-ip-stack-5-tcp-retransmission/
+| Layer     | Implemented                                                                 |
+|-----------|-----------------------------------------------------------------------------|
+| Link      | TAP device, Ethernet II, ARP request/reply with a cache                     |
+| Network   | IPv4 header validation, reassembly of fragments, fragmentation on output, unique datagram ids, one static route table |
+| ICMPv4    | Echo reply, checksum validation, Destination Unreachable (protocol, port)   |
+| TCP       | RFC 793 state machine (client side), checksums, RFC 6298 RTO with Karn's algorithm, out-of-order queue, SACK blocks, half-close, RFC 6528 ISNs, random ephemeral ports |
+| UDP       | RFC 768 datagrams, checksums, `bind`/`connect`/`sendto`/`recvfrom`, port unreachable |
+| Sockets   | `socket`, `bind`, `connect`, `read`/`write`, `send`/`recv`, `sendto`/`recvfrom`, `shutdown`, `close`, `poll`, `fcntl`, `getsockopt(SO_ERROR)`, `getsockname`, `getpeername` |
 
-See [Getting Started](Documentation/getting-started.md).
+Not implemented: TCP `listen`/`accept` (no server side), congestion control,
+window scaling, IP options, IPv6, `select`/`epoll`, more than one interface.
 
-For development documentation, start with [Development](Documentation/development.md).
+## Layout
 
-# Reference works
+```
+src/core/       main loop and threads, timers, sk_buff, checksums, CLI
+src/link/       TAP device, netdev rx/tx, ARP
+src/net/        IPv4 input/output, fragmentation (ip_frag.c), routes, ICMPv4
+src/transport/  TCP (tcp*.c) and UDP (udp.c)
+src/socket/     socket table, inet layer, IPC server for the shim
+tools/          liblevelip.so (LD_PRELOAD shim) and the level-ip wrapper
+apps/           curl, curl-poll (TCP clients), udp (echo server / client)
+tests/unit/     host-only tests, no privileges
+tests/netns/    end-to-end tests over a real TAP device
+```
 
-* Linux kernel TCP/IP stack, [source code](https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/tree/net/ipv4)
-* picoTCP, [source code](https://github.com/tass-belgium/picotcp)
-* Xiaochen Wang's TCP/IP stack, [source code](https://github.com/chobits/tapip)
+## Build and test
 
-# License
+```
+make all     # lvl-ip, tools/liblevelip.so, apps
+make test    # unit tests, then end-to-end tests
+```
 
-See [LICENSE.md](LICENSE.md) (MIT)
+`make test` needs no root: the end-to-end suite runs inside an unprivileged
+user + network + mount namespace (`unshare -rnm`), creates the TAP device
+there, and talks to lvl-ip from the namespace's kernel stack. It covers ARP,
+ping, UDP both ways (including 4000-byte datagrams fragmented in both
+directions and ICMP port unreachable), TCP RST, and TCP downloads and uploads
+under `tc netem` delay, duplication and 25% loss.
+
+## Running it
+
+See [Documentation/getting-started.md](Documentation/getting-started.md).
+In short, inside a namespace:
+
+```
+unshare -rnm sh -c 'mount -t tmpfs tmpfs /tmp; ./lvl-ip & sleep 1; \
+    tools/level-ip apps/udp/udp echo 7000'
+```
+
+## License
+
+See [LICENSE](LICENSE) for this project and [THIRD_PARTY.md](THIRD_PARTY.md)
+for the upstream MIT notice that must be kept.
