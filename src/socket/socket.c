@@ -182,6 +182,15 @@ static int port_in_use(int protocol, uint16_t port)
     return 0;
 }
 
+int socket_port_in_use(int protocol, uint16_t port)
+{
+    pthread_rwlock_rdlock(&slock);
+    int rc = port_in_use(protocol, port);
+    pthread_rwlock_unlock(&slock);
+
+    return rc;
+}
+
 /* RFC 6056 style: start at a random offset in the ephemeral range and take
  * the first local port not used by this protocol. Returns 0 if exhausted. */
 uint16_t socket_ephemeral_port(int protocol)
@@ -362,6 +371,56 @@ int _close(pid_t pid, int sockfd)
 
     socket_wr_acquire(sock);
     int rc = sock->ops->close(sock);
+    socket_release(sock);
+
+    return rc;
+}
+
+int _bind(pid_t pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+{
+    struct socket *sock;
+
+    if ((sock = get_socket(pid, sockfd)) == NULL) {
+        print_err("Bind: could not find socket (fd %u) for connection (pid %d)\n", sockfd, pid);
+        return -EBADF;
+    }
+
+    socket_wr_acquire(sock);
+    int rc = sock->ops->bind(sock, addr, addrlen);
+    socket_release(sock);
+
+    return rc;
+}
+
+int _sendto(pid_t pid, int sockfd, const void *buf, const unsigned int count,
+            const struct sockaddr *addr, socklen_t addrlen)
+{
+    struct socket *sock;
+
+    if ((sock = get_socket(pid, sockfd)) == NULL) {
+        print_err("Sendto: could not find socket (fd %u) for connection (pid %d)\n", sockfd, pid);
+        return -EBADF;
+    }
+
+    socket_wr_acquire(sock);
+    int rc = sock->ops->sendto(sock, buf, count, addr, addrlen);
+    socket_release(sock);
+
+    return rc;
+}
+
+int _recvfrom(pid_t pid, int sockfd, void *buf, const unsigned int count,
+              struct sockaddr *addr, socklen_t *addrlen)
+{
+    struct socket *sock;
+
+    if ((sock = get_socket(pid, sockfd)) == NULL) {
+        print_err("Recvfrom: could not find socket (fd %u) for connection (pid %d)\n", sockfd, pid);
+        return -EBADF;
+    }
+
+    socket_wr_acquire(sock);
+    int rc = sock->ops->recvfrom(sock, buf, count, addr, addrlen);
     socket_release(sock);
 
     return rc;

@@ -4,6 +4,9 @@
 #include "sock.h"
 #include "tcp.h"
 #include "wait.h"
+#include "netdev.h"
+
+extern struct netdev *netdev;
 
 extern struct net_ops tcp_ops;
 
@@ -20,6 +23,9 @@ static struct sock_ops inet_stream_ops = {
     .connect = &inet_stream_connect,
     .write = &inet_write,
     .read = &inet_read,
+    .bind = &inet_bind,
+    .sendto = &inet_sendto,
+    .recvfrom = &inet_recvfrom,
     .close = &inet_close,
     .free = &inet_free,
     .abort = &inet_abort,
@@ -41,8 +47,11 @@ int inet_create(struct socket *sock, int protocol)
     struct sock *sk;
     struct sock_type *skt = NULL;
 
+    int type = sock->type & ~(SOCK_NONBLOCK | SOCK_CLOEXEC);
+
     for (int i = 0; i < INET_OPS; i++) {
-        if (inet_ops[i].type & sock->type) {
+        if (inet_ops[i].type == type &&
+            (protocol == 0 || protocol == inet_ops[i].protocol)) {
             skt = &inet_ops[i];
             break;
         }
@@ -54,6 +63,10 @@ int inet_create(struct socket *sock, int protocol)
     }
 
     sock->ops = skt->sock_ops;
+
+    if (sock->type & SOCK_NONBLOCK) {
+        sock->flags |= O_NONBLOCK;
+    }
 
     sk = sk_alloc(skt->net_ops, skt->protocol);
     sk->protocol = skt->protocol;
@@ -155,6 +168,83 @@ int inet_read(struct socket *sock, void *buf, int len)
     struct sock *sk = sock->sk;
 
     return sk->ops->read(sk, buf, len);
+}
+
+static int inet_parse_addr(const struct sockaddr *addr, socklen_t addr_len,
+                           struct sockaddr_in *out)
+{
+    if (addr == NULL || addr_len < sizeof(struct sockaddr_in)) return -EINVAL;
+    memcpy(out, addr, sizeof(struct sockaddr_in));
+    if (out->sin_family != AF_INET) return -EAFNOSUPPORT;
+
+    return 0;
+}
+
+/* Binds to the stack's own address (or INADDR_ANY) and a local port.
+ * Port 0 picks an ephemeral port. */
+int inet_bind(struct socket *sock, const struct sockaddr *addr, socklen_t addr_len)
+{
+    struct sock *sk = sock->sk;
+    struct sockaddr_in sin;
+    int rc;
+
+    if ((rc = inet_parse_addr(addr, addr_len, &sin)) != 0) return rc;
+    if (sk->sport != 0) return -EINVAL;
+
+    uint32_t local = ntohl(sin.sin_addr.s_addr);
+    if (local != INADDR_ANY && local != netdev->addr) return -EADDRNOTAVAIL;
+
+    uint16_t port = ntohs(sin.sin_port);
+    if (port == 0) {
+        if ((port = socket_ephemeral_port(sk->protocol)) == 0) return -EADDRINUSE;
+    } else if (socket_port_in_use(sk->protocol, port)) {
+        return -EADDRINUSE;
+    }
+
+    sk->sport = port;
+    sk->saddr = netdev->addr;
+
+    return 0;
+}
+
+int inet_sendto(struct socket *sock, const void *buf, int len,
+                const struct sockaddr *addr, socklen_t addr_len)
+{
+    struct sock *sk = sock->sk;
+    struct sockaddr_in sin;
+
+    if (!sk->ops->sendto) return sk->ops->write(sk, buf, len);
+
+    if (addr == NULL) return sk->ops->sendto(sk, buf, len, NULL);
+
+    int rc = inet_parse_addr(addr, addr_len, &sin);
+    if (rc != 0) return rc;
+
+    return sk->ops->sendto(sk, buf, len, &sin);
+}
+
+int inet_recvfrom(struct socket *sock, void *buf, int len,
+                  struct sockaddr *addr, socklen_t *addr_len)
+{
+    struct sock *sk = sock->sk;
+    struct sockaddr_in sin = { .sin_family = AF_INET };
+    int rc;
+
+    if (sk->ops->recvfrom) {
+        rc = sk->ops->recvfrom(sk, buf, len, &sin);
+    } else {
+        rc = sk->ops->read(sk, buf, len);
+        sin.sin_port = htons(sk->dport);
+        sin.sin_addr.s_addr = htonl(sk->daddr);
+    }
+
+    if (rc >= 0 && addr != NULL && addr_len != NULL) {
+        socklen_t n = min(*addr_len, sizeof(sin));
+        memcpy(addr, &sin, n);
+        *addr_len = sizeof(sin);
+    }
+
+    return rc;
 }
 
 struct sock *inet_lookup(struct sk_buff *skb, int protocol, uint16_t sport, uint16_t dport)

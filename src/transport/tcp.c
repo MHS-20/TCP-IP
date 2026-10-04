@@ -6,6 +6,9 @@
 #include "utils.h"
 #include "timer.h"
 #include "wait.h"
+#include "netdev.h"
+
+extern struct netdev *netdev;
 
 #ifdef DEBUG_TCP
 const char *tcp_dbg_states[] = {
@@ -178,8 +181,7 @@ int tcp_v4_connect(struct sock *sk, const struct sockaddr *addr, int addrlen, in
     }
 
     sk->daddr = ntohl(daddr);
-    /* TODO: Do not hardcode lvl-ip local interface */
-    sk->saddr = parse_ipv4_string("10.0.0.4"); 
+    sk->saddr = netdev->addr;
 
     return tcp_connect(sk);
 }

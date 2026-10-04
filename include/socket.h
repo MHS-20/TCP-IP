@@ -42,6 +42,11 @@ struct sock_ops {
                     int addr_len, int flags);
     int (*write) (struct socket *sock, const void *buf, int len);
     int (*read) (struct socket *sock, void *buf, int len);
+    int (*bind) (struct socket *sock, const struct sockaddr *addr, socklen_t addr_len);
+    int (*sendto) (struct socket *sock, const void *buf, int len,
+                   const struct sockaddr *addr, socklen_t addr_len);
+    int (*recvfrom) (struct socket *sock, void *buf, int len,
+                     struct sockaddr *addr, socklen_t *addr_len);
     int (*close) (struct socket *sock);
     int (*free) (struct socket *sock);
     int (*abort) (struct socket *sock);
@@ -76,6 +81,11 @@ int _connect(pid_t pid, int sockfd, const struct sockaddr *addr, socklen_t addrl
 int _write(pid_t pid, int sockfd, const void *buf, const unsigned int count);
 int _read(pid_t pid, int sockfd, void *buf, const unsigned int count);
 int _close(pid_t pid, int sockfd);
+int _bind(pid_t pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+int _sendto(pid_t pid, int sockfd, const void *buf, const unsigned int count,
+            const struct sockaddr *addr, socklen_t addrlen);
+int _recvfrom(pid_t pid, int sockfd, void *buf, const unsigned int count,
+              struct sockaddr *addr, socklen_t *addrlen);
 int _poll(pid_t pid, struct pollfd fds[], nfds_t nfds, int timeout);
 int _fcntl(pid_t pid, int fildes, int cmd, ...);
 int _getsockopt(pid_t pid, int fd, int level, int optname, void *optval, socklen_t *optlen);
@@ -87,6 +97,7 @@ int _getsockname(pid_t pid, int socket, struct sockaddr *restrict address,
 struct socket *socket_lookup(int protocol, uint16_t remoteport, uint16_t localport);
 struct socket *socket_find(struct socket *sock);
 uint16_t socket_ephemeral_port(int protocol);
+int socket_port_in_use(int protocol, uint16_t port);
 int socket_rd_acquire(struct socket *sock);
 int socket_wr_acquire(struct socket *sock);
 int socket_release(struct socket *sock);

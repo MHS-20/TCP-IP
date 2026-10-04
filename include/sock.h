@@ -14,6 +14,10 @@ struct net_ops {
     int (*disconnect) (struct sock *sk, int flags);
     int (*write) (struct sock *sk, const void *buf, int len);
     int (*read) (struct sock *sk, void *buf, int len);
+    /* Optional: datagram protocols. dst == NULL sends to the connected peer,
+       src may be NULL. Stream protocols fall back to write/read. */
+    int (*sendto) (struct sock *sk, const void *buf, int len, const struct sockaddr_in *dst);
+    int (*recvfrom) (struct sock *sk, void *buf, int len, struct sockaddr_in *src);
     int (*recv_notify) (struct sock *sk);
     int (*close) (struct sock *sk);
     int (*abort) (struct sock *sk);
