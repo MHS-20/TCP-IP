@@ -12,6 +12,7 @@ static void ip_init_pkt(struct iphdr *ih)
     ih->daddr = ntohl(ih->daddr);
     ih->len = ntohs(ih->len);
     ih->id = ntohs(ih->id);
+    ih->frag_offset = ntohs(ih->frag_offset);
 }
 
 int ip_rcv(struct sk_buff *skb)
@@ -49,9 +50,12 @@ int ip_rcv(struct sk_buff *skb)
         goto drop_pkt;
     }
 
-    // TODO: Check fragmentation, possibly reassemble
-
     ip_init_pkt(ih);
+
+    if (ih->frag_offset & (IP_FRAG_MF | IP_FRAG_OFFSET)) {
+        if ((skb = ip_reassemble(skb)) == NULL) return 0;
+        ih = ip_hdr(skb);
+    }
 
     ip_dbg("in", ih);
 

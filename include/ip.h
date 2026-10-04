@@ -9,6 +9,10 @@
 #define IP_TCP 0x06
 #define ICMPV4 0x01
 
+#define IP_FRAG_DF 0x4000
+#define IP_FRAG_MF 0x2000
+#define IP_FRAG_OFFSET 0x1fff
+
 #define IP_HDR_LEN sizeof(struct iphdr)
 #define ip_len(ip) (ip->len - (ip->ihl * 4))
 
@@ -62,6 +66,7 @@ static inline uint32_t ip_parse(char *addr)
 }
 
 int ip_rcv(struct sk_buff *skb);
+struct sk_buff *ip_reassemble(struct sk_buff *skb);
 int ip_output(struct sock *sk, struct sk_buff *skb);
 
 #endif
