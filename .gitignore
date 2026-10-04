@@ -4,7 +4,6 @@ a.out
 *.o
 *cscope*
 lvl-ip
-tests/venv
 vgcore*
 tools/liblevelip.so
 apps/curl/curl

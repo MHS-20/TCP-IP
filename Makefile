@@ -26,13 +26,7 @@ apps: $(apps)
 
 all: lvl-ip apps
 
-test: debug apps
-	@echo
-	@echo "Networking capabilites are required for test dependencies:"
-	which arping | sudo xargs setcap cap_net_raw=ep
-	which tc | sudo xargs setcap cap_net_admin=ep
-	@echo
-	cd tests && ./test-run-all
+test: unit e2e
 
 unit:
 	$(MAKE) -C tests/unit run
