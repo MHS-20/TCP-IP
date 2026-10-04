@@ -84,7 +84,7 @@ int _getpeername(pid_t pid, int socket, struct sockaddr *restrict address,
 int _getsockname(pid_t pid, int socket, struct sockaddr *restrict address,
                  socklen_t *restrict address_len);
 
-struct socket *socket_lookup(uint16_t sport, uint16_t dport);
+struct socket *socket_lookup(int protocol, uint16_t remoteport, uint16_t localport);
 struct socket *socket_find(struct socket *sock);
 int socket_rd_acquire(struct socket *sock);
 int socket_wr_acquire(struct socket *sock);

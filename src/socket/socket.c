@@ -138,7 +138,7 @@ out:
     return sock;
 }
 
-struct socket *socket_lookup(uint16_t remoteport, uint16_t localport)
+struct socket *socket_lookup(int protocol, uint16_t remoteport, uint16_t localport)
 {
     struct list_head *item;
     struct socket *sock = NULL;
@@ -152,7 +152,8 @@ struct socket *socket_lookup(uint16_t remoteport, uint16_t localport)
         if (sock == NULL || sock->sk == NULL) continue;
         sk = sock->sk;
 
-        if (sk->sport == localport && sk->dport == remoteport) {
+        if (sk->protocol == protocol && sk->sport == localport &&
+            sk->dport == remoteport) {
             goto found;
         }
     }

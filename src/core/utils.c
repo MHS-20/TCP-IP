@@ -54,6 +54,22 @@ uint16_t checksum(void *addr, int count, int start_sum)
     return ~sum;
 }
 
+/* Internet checksum over a TCP/UDP segment and its IPv4 pseudo-header.
+ * saddr and daddr are in network byte order. */
+uint16_t pseudo_checksum(uint32_t saddr, uint32_t daddr, uint8_t proto,
+                         uint8_t *data, uint16_t len)
+{
+    uint32_t sum = 0;
+
+    /* Add addresses as 16-bit words so the 32-bit sum cannot overflow */
+    sum += (saddr >> 16) + (saddr & 0xffff);
+    sum += (daddr >> 16) + (daddr & 0xffff);
+    sum += htons(proto);
+    sum += htons(len);
+
+    return checksum(data, len, sum);
+}
+
 int get_address(char *host, char *port, struct sockaddr *addr)
 {
     struct addrinfo hints;

@@ -27,5 +27,5 @@ int inet_getpeername(struct socket *sock, struct sockaddr *restrict address,
 int inet_getsockname(struct socket *sock, struct sockaddr *restrict address,
                      socklen_t *restrict address_len);
 
-struct sock *inet_lookup(struct sk_buff *skb, uint16_t sport, uint16_t dport);
+struct sock *inet_lookup(struct sk_buff *skb, int protocol, uint16_t sport, uint16_t dport);
 #endif

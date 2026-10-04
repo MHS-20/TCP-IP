@@ -55,8 +55,8 @@ int inet_create(struct socket *sock, int protocol)
 
     sock->ops = skt->sock_ops;
 
-    sk = sk_alloc(skt->net_ops, protocol);
-    sk->protocol = protocol;
+    sk = sk_alloc(skt->net_ops, skt->protocol);
+    sk->protocol = skt->protocol;
     
     sock_init_data(sock, sk);
     
@@ -157,9 +157,9 @@ int inet_read(struct socket *sock, void *buf, int len)
     return sk->ops->read(sk, buf, len);
 }
 
-struct sock *inet_lookup(struct sk_buff *skb, uint16_t sport, uint16_t dport)
+struct sock *inet_lookup(struct sk_buff *skb, int protocol, uint16_t sport, uint16_t dport)
 {
-    struct socket *sock = socket_lookup(sport, dport);
+    struct socket *sock = socket_lookup(protocol, sport, dport);
     if (sock == NULL) return NULL;
     
     return sock->sk;

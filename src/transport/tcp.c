@@ -61,11 +61,19 @@ void tcp_in(struct sk_buff *skb)
     struct tcphdr *th;
 
     iph = ip_hdr(skb);
-    th = (struct tcphdr*) iph->data;
+    th = (struct tcphdr*) ((uint8_t *)iph + iph->ihl * 4);
+
+    if (ip_len(iph) < TCP_HDR_LEN ||
+        pseudo_checksum(htonl(iph->saddr), htonl(iph->daddr), IP_TCP,
+                         (uint8_t *)th, ip_len(iph)) != 0) {
+        print_err("TCP segment dropped: bad length or checksum\n");
+        free_skb(skb);
+        return;
+    }
 
     tcp_init_segment(th, iph, skb);
     
-    sk = inet_lookup(skb, th->sport, th->dport);
+    sk = inet_lookup(skb, IPPROTO_TCP, th->sport, th->dport);
 
     if (sk == NULL) {
         print_err("No TCP socket for sport %d dport %d\n",
@@ -76,30 +84,15 @@ void tcp_in(struct sk_buff *skb)
     socket_wr_acquire(sk->sock);
 
     tcp_in_dbg(th, sk, skb);
-    /* if (tcp_checksum(iph, th) != 0) { */
-    /*     goto discard; */
     /* } */
     tcp_input_state(sk, th, skb);
 
     socket_release(sk->sock);
 }
 
-int tcp_udp_checksum(uint32_t saddr, uint32_t daddr, uint8_t proto,
-                     uint8_t *data, uint16_t len)
-{
-    uint32_t sum = 0;
-
-    sum += saddr;
-    sum += daddr;
-    sum += htons(proto);
-    sum += htons(len);
-    
-    return checksum(data, len, sum);
-}
-
 int tcp_v4_checksum(struct sk_buff *skb, uint32_t saddr, uint32_t daddr)
 {
-    return tcp_udp_checksum(saddr, daddr, IP_TCP, skb->data, skb->len);
+    return pseudo_checksum(saddr, daddr, IP_TCP, skb->data, skb->len);
 }
 
 struct sock *tcp_alloc_sock()
