@@ -37,8 +37,12 @@ test: debug apps
 unit:
 	$(MAKE) -C tests/unit run
 
+# End-to-end over a real TAP device in an unprivileged network namespace
+e2e: all
+	tests/netns/run.sh
+
 clean:
 	rm -rf build lvl-ip
 	$(MAKE) -C tests/unit clean
 
-.PHONY: debug apps all test unit clean
+.PHONY: debug apps all test unit e2e clean
