@@ -14,7 +14,6 @@ const char *tcp_dbg_states[] = {
 };
 #endif
 
-static pthread_rwlock_t tcplock = PTHREAD_RWLOCK_INITIALIZER;
 
 struct net_ops tcp_ops = {
     .alloc_sock = &tcp_alloc_sock,
@@ -128,22 +127,40 @@ void __tcp_set_state(struct sock *sk, uint32_t state)
     sk->state = state;
 }
 
-static uint16_t generate_port()
+/*
+ * RFC 6528: ISN = M + F(localip, localport, remoteip, remoteport, secretkey),
+ * where M is a timer ticking every 4 microseconds. F here is a keyed FNV-1a
+ * mix, which keeps ISNs per-connection unpredictable without pulling in a
+ * cryptographic hash; a real stack would use SipHash or similar.
+ */
+static uint64_t iss_secret;
+static pthread_once_t iss_secret_once = PTHREAD_ONCE_INIT;
+
+static void init_iss_secret(void)
 {
-    /* TODO: Generate a proper port */
-    static int port = 40000;
-
-    pthread_rwlock_wrlock(&tcplock);
-    int copy =  ++port + (timer_get_tick() % 10000);
-    pthread_rwlock_unlock(&tcplock);
-
-    return copy;
+    if (getrandom(&iss_secret, sizeof(iss_secret), 0) != sizeof(iss_secret)) {
+        iss_secret = (uint64_t)time(NULL) * 0x9e3779b97f4a7c15ULL;
+    }
 }
 
-int generate_iss()
+uint32_t generate_iss(struct sock *sk)
 {
-    /* TODO: Generate a proper ISS */
-    return (int)time(NULL) * rand();
+    pthread_once(&iss_secret_once, init_iss_secret);
+
+    uint32_t tuple[] = { sk->saddr, sk->daddr, ((uint32_t)sk->sport << 16) | sk->dport };
+    uint64_t h = 0xcbf29ce484222325ULL ^ iss_secret;
+    const uint8_t *p = (const uint8_t *)tuple;
+
+    for (size_t i = 0; i < sizeof(tuple); i++) {
+        h ^= p[i];
+        h *= 0x100000001b3ULL;
+    }
+
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint32_t m = (uint32_t)((ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000) / 4);
+
+    return m + (uint32_t)(h ^ (h >> 32));
 }
 
 int tcp_v4_connect(struct sock *sk, const struct sockaddr *addr, int addrlen, int flags)
@@ -152,7 +169,14 @@ int tcp_v4_connect(struct sock *sk, const struct sockaddr *addr, int addrlen, in
     uint32_t daddr = ((struct sockaddr_in *)addr)->sin_addr.s_addr;
 
     sk->dport = ntohs(dport);
-    sk->sport = generate_port();
+    if (sk->sport == 0) {
+        sk->sport = socket_ephemeral_port(IPPROTO_TCP);
+    }
+
+    if (sk->sport == 0) {
+        return -EADDRNOTAVAIL;
+    }
+
     sk->daddr = ntohl(daddr);
     /* TODO: Do not hardcode lvl-ip local interface */
     sk->saddr = parse_ipv4_string("10.0.0.4"); 

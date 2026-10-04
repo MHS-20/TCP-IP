@@ -231,7 +231,7 @@ void tcp_in(struct sk_buff *skb);
 int tcp_checksum(struct tcp_sock *sock, struct tcphdr *thdr);
 void tcp_select_initial_window(uint32_t *rcv_wnd);
 
-int generate_iss();
+uint32_t generate_iss(struct sock *sk);
 struct sock *tcp_alloc_sock();
 int tcp_v4_init_sock(struct sock *sk);
 int tcp_init_sock(struct sock *sk);

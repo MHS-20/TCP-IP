@@ -25,5 +25,6 @@
 #include <poll.h>
 #include <sys/prctl.h>
 #include <sys/capability.h>
+#include <sys/random.h>
 
 #endif

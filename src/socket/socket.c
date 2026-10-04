@@ -164,6 +164,50 @@ found:
     return sock;
 }
 
+#define EPHEMERAL_LOW  49152
+#define EPHEMERAL_HIGH 65535
+
+static int port_in_use(int protocol, uint16_t port)
+{
+    struct list_head *item;
+
+    list_for_each(item, &sockets) {
+        struct socket *sock = list_entry(item, struct socket, list);
+
+        if (sock->sk && sock->sk->protocol == protocol && sock->sk->sport == port) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/* RFC 6056 style: start at a random offset in the ephemeral range and take
+ * the first local port not used by this protocol. Returns 0 if exhausted. */
+uint16_t socket_ephemeral_port(int protocol)
+{
+    const uint32_t range = EPHEMERAL_HIGH - EPHEMERAL_LOW + 1;
+    uint32_t offset;
+    uint16_t port = 0;
+
+    if (getrandom(&offset, sizeof(offset), 0) != sizeof(offset)) {
+        offset = timer_get_tick();
+    }
+
+    pthread_rwlock_rdlock(&slock);
+    for (uint32_t i = 0; i < range; i++) {
+        uint16_t candidate = EPHEMERAL_LOW + (offset + i) % range;
+
+        if (!port_in_use(protocol, candidate)) {
+            port = candidate;
+            break;
+        }
+    }
+    pthread_rwlock_unlock(&slock);
+
+    return port;
+}
+
 struct socket *socket_find(struct socket *find)
 {
     struct list_head *item;

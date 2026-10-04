@@ -425,7 +425,7 @@ int tcp_connect(struct sock *sk)
     int rc = 0;
     
     tsk->tcp_header_len = sizeof(struct tcphdr);
-    tcb->iss = generate_iss();
+    tcb->iss = generate_iss(sk);
     tcb->snd_wnd = 0;
     tcb->snd_wl1 = 0;
 

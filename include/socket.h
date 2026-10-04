@@ -86,6 +86,7 @@ int _getsockname(pid_t pid, int socket, struct sockaddr *restrict address,
 
 struct socket *socket_lookup(int protocol, uint16_t remoteport, uint16_t localport);
 struct socket *socket_find(struct socket *sock);
+uint16_t socket_ephemeral_port(int protocol);
 int socket_rd_acquire(struct socket *sock);
 int socket_wr_acquire(struct socket *sock);
 int socket_release(struct socket *sock);
