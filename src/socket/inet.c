@@ -9,11 +9,15 @@
 extern struct netdev *netdev;
 
 extern struct net_ops tcp_ops;
+extern struct net_ops udp_ops;
 
 static int inet_stream_connect(struct socket *sock, const struct sockaddr *addr,
                                int addr_len, int flags);
 
-static int INET_OPS = 1;
+static int inet_dgram_connect(struct socket *sock, const struct sockaddr *addr,
+                              int addr_len, int flags);
+
+static int INET_OPS = 2;
 
 struct net_family inet = {
     .create = inet_create,
@@ -33,12 +37,32 @@ static struct sock_ops inet_stream_ops = {
     .getsockname = &inet_getsockname,
 };
 
+static struct sock_ops inet_dgram_ops = {
+    .connect = &inet_dgram_connect,
+    .write = &inet_write,
+    .read = &inet_read,
+    .bind = &inet_bind,
+    .sendto = &inet_sendto,
+    .recvfrom = &inet_recvfrom,
+    .close = &inet_close,
+    .free = &inet_free,
+    .abort = &inet_abort,
+    .getpeername = &inet_getpeername,
+    .getsockname = &inet_getsockname,
+};
+
 static struct sock_type inet_ops[] = {
     {
         .sock_ops = &inet_stream_ops,
         .net_ops = &tcp_ops,
         .type = SOCK_STREAM,
         .protocol = IPPROTO_TCP,
+    },
+    {
+        .sock_ops = &inet_dgram_ops,
+        .net_ops = &udp_ops,
+        .type = SOCK_DGRAM,
+        .protocol = IPPROTO_UDP,
     }
 };
 
@@ -153,6 +177,20 @@ out:
     return sk->err;
 sock_error:
     rc = sk->err;
+    return rc;
+}
+
+static int inet_dgram_connect(struct socket *sock, const struct sockaddr *addr,
+                              int addr_len, int flags)
+{
+    if (addr_len < sizeof(addr->sa_family)) return -EINVAL;
+
+    int rc = sock->sk->ops->connect(sock->sk, addr, addr_len, flags);
+
+    if (rc == 0) {
+        sock->state = addr->sa_family == AF_UNSPEC ? SS_UNCONNECTED : SS_CONNECTED;
+    }
+
     return rc;
 }
 
@@ -293,6 +331,10 @@ int inet_getpeername(struct socket *sock, struct sockaddr *restrict address,
 
     if (sk == NULL) {
         return -1;
+    }
+
+    if (sk->dport == 0) {
+        return -ENOTCONN;
     }
 
     struct sockaddr_in *res = (struct sockaddr_in *) address;
