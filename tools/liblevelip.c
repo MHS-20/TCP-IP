@@ -458,8 +458,9 @@ ssize_t recvfrom(int fd, void *restrict buf, size_t len,
     char *rbuf = malloc(hlen + len);
 
     if (ipc_read_full(real_read, sock->lvlfd, rbuf, hlen) != 0) {
-        perror("Could not read IPC recvfrom response");
+        print_err("Lost connection to lvl-ip while waiting in recvfrom\n");
         free(rbuf);
+        errno = ECONNRESET;
         return -1;
     }
 
@@ -475,8 +476,9 @@ ssize_t recvfrom(int fd, void *restrict buf, size_t len,
     }
 
     if (ipc_read_full(real_read, sock->lvlfd, rbuf + hlen, data->len) != 0) {
-        perror("Could not read IPC recvfrom data");
+        print_err("Lost connection to lvl-ip while reading a datagram\n");
         free(rbuf);
+        errno = ECONNRESET;
         return -1;
     }
 

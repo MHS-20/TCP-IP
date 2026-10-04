@@ -62,7 +62,3 @@ unshare -rnm sh -c 'mount -t tmpfs tmpfs /tmp; ./lvl-ip & sleep 1; \
     tools/level-ip apps/udp/udp echo 7000'
 ```
 
-## License
-
-See [LICENSE](LICENSE) for this project and [THIRD_PARTY.md](THIRD_PARTY.md)
-for the upstream MIT notice that must be kept.
